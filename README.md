@@ -1,5 +1,6 @@
 # external-snapshot-metadata
 
+Hello! This is the home of the external-snapshot-metadata project.
 This repo contains sidecar controller for the snapshot metadata service.
 
 ## Community, discussion, contribution, and support
