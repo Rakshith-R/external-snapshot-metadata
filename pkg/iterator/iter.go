@@ -94,6 +94,9 @@ type Args struct {
 	// with the audience string from the SnapshotMetadataService CR.
 	ServiceAccount string
 
+	// ServiceAccountNamespace is the namespace of the ServiceAccount.
+	ServiceAccountNamespace string
+
 	// TokenExpirySecs specifies the time in seconds after which the
 	// security token will expire.
 	// If unspecified then the value of DefaultTokenExpirySeconds is used.
@@ -266,9 +269,9 @@ func (iter *iterator) createSecurityToken(ctx context.Context, audience string) 
 		},
 	}
 
-	tokenResp, err := iter.KubeClient.CoreV1().ServiceAccounts(iter.Namespace).CreateToken(ctx, iter.ServiceAccount, &tokenRequest, apimetav1.CreateOptions{})
+	tokenResp, err := iter.KubeClient.CoreV1().ServiceAccounts(iter.ServiceAccountNamespace).CreateToken(ctx, iter.ServiceAccount, &tokenRequest, apimetav1.CreateOptions{})
 	if err != nil {
-		return "", fmt.Errorf("ServiceAccounts.CreateToken(%s): %v", iter.ServiceAccount, err)
+		return "", fmt.Errorf("ServiceAccounts.CreateToken(%s/%s): %v", iter.ServiceAccountNamespace, iter.ServiceAccount, err)
 	}
 
 	return tokenResp.Status.Token, nil

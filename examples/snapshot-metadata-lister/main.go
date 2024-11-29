@@ -81,6 +81,7 @@ func parseFlags() {
 	}
 
 	flag.StringVar(&args.ServiceAccount, "service-account", "default", "ServiceAccount used to create a security token.")
+	flag.StringVar(&args.ServiceAccountNamespace, "service-account-namespace", "default", "Namespace of the ServiceAccount.")
 
 	flag.Int64Var(&args.TokenExpirySecs, "token-expiry", 600, "Expiry time in seconds for the security token.")
 	flag.Int64Var(&args.StartingOffset, "starting-offset", 0, "The starting byte offset.")
