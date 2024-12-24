@@ -133,7 +133,8 @@ func main() {
 	parseFlags()
 
 	// get the K8s config from either kubeConfig, in-cluster or default
-	config, err := buildConfig(kubeConfig)
+	// config, err := buildConfig(kubeConfig)
+	config, err := clientcmd.BuildConfigFromFlags("", kubeConfig)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading kubeconfig %s: %v\n", kubeConfig, err)
 		os.Exit(1)
