@@ -73,9 +73,12 @@ func parseFlags() {
 		flag.StringVar(sVar, shortName, defaultValue, fmt.Sprintf("Shorthand for -%s", longName))
 	}
 
+	flag.BoolVar(&args.Verify, "verify", false, "If true, the changed blocks are copied and contents verified between source-device and target-device.")
 	stringFlag(&args.Namespace, "namespace", "n", "", "The Namespace containing the VolumeSnapshot objects.")
 	stringFlag(&args.SnapshotName, "snapshot", "s", "", "The name of the VolumeSnapshot for which metadata is to be displayed.")
 	stringFlag(&args.PrevSnapshotName, "previous-snapshot", "p", "", "The name of an earlier VolumeSnapshot against which changed block metadata is to be displayed.")
+	stringFlag(&args.SourceDevice, "source-device", "src", "", "The source device to use for verification.")
+	stringFlag(&args.TargetDevice, "target-device", "tgt", "", "The target device to use for verification.")
 	stringFlag(&outputFormat, "output-format", "o", "table", "The format of the output. Possible values: \"table\" or \"json\".")
 
 	if home := homedir.HomeDir(); home != "" {
@@ -147,6 +150,21 @@ func main() {
 	}
 
 	args.Clients = clients
+
+	if args.Verify {
+		args.Source, err = os.Open(args.SourceDevice)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error opening source device %s: %v\n", args.SourceDevice, err)
+			os.Exit(1)
+		}
+		defer args.Source.Close()
+		args.Target, _ = os.OpenFile(args.TargetDevice, os.O_RDWR, 0)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error opening target device %s: %v\n", args.TargetDevice, err)
+			os.Exit(1)
+		}
+		defer args.Target.Close()
+	}
 
 	ctx, stopFn := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stopFn()
