@@ -157,14 +157,19 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error opening source device %s: %v\n", args.SourceDevice, err)
 			os.Exit(1)
 		}
-		defer args.Source.Close()
-		args.Target, _ = os.OpenFile(args.TargetDevice, os.O_RDWR, 0)
+		args.Target, err = os.OpenFile(args.TargetDevice, os.O_RDWR, 0644)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error opening target device %s: %v\n", args.TargetDevice, err)
+			args.Source.Close()
 			os.Exit(1)
 		}
-		defer args.Target.Close()
 	}
+	defer func() {
+		if args.Verify {
+			args.Source.Close()
+			args.Target.Close()
+		}
+	}()
 
 	ctx, stopFn := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stopFn()

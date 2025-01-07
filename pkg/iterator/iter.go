@@ -184,8 +184,6 @@ type IteratorEmitter interface {
 type iterator struct {
 	Args
 	recordNum int
-	Source    *os.File
-	Target    *os.File
 
 	h iteratorHelpers
 }
@@ -432,6 +430,11 @@ func (iter *iterator) getChangedBlocks(ctx context.Context, grpcClient api.Snaps
 		}) {
 			return ErrCancelled
 		}
+
+		err = iter.copyChangedBlocks(ctx, resp.BlockMetadata)
+		if err != nil {
+			return err
+		}
 	}
 }
 
@@ -442,7 +445,12 @@ func (iter *iterator) copyChangedBlocks(ctx context.Context, blockMetadata []*ap
 
 	for _, bmd := range blockMetadata {
 		buffer := make([]byte, bmd.SizeBytes)
-		_, err := iter.Source.ReadAt(buffer, bmd.ByteOffset)
+		_, err := iter.Source.Seek(bmd.ByteOffset, io.SeekStart)
+		if err != nil {
+			return fmt.Errorf("failed to seek source device(offset: %d, size bytes: %d): %w", bmd.ByteOffset, bmd.SizeBytes, err)
+		}
+		iter.Source.Stat()
+		_, err = iter.Source.Read(buffer)
 		if err != nil {
 			return fmt.Errorf("failed to read source device(offset: %d, size bytes: %d): %w", bmd.ByteOffset, bmd.SizeBytes, err)
 		}
@@ -456,6 +464,17 @@ func (iter *iterator) copyChangedBlocks(ctx context.Context, blockMetadata []*ap
 }
 
 func (iter *iterator) verifyFinalContents() error {
+	if !iter.Verify {
+		return nil
+	}
+	_, err := iter.Source.Seek(0, io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("failed to seek source device to start: %w", err)
+	}
+	_, err = iter.Target.Seek(0, io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("failed to seek target device to start: %w", err)
+	}
 	const chunkSize = 256
 	sourceBuffer := make([]byte, chunkSize)
 	targetBuffer := make([]byte, chunkSize)
