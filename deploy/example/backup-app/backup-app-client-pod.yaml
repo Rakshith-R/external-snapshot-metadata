@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backup-app-client
+  namespace: default
+spec:
+  serviceAccountName: backup-app-service-account
+  containers:
+  - name: run-client
+    image: busybox:1.37.0
+    command:
+    - /bin/sh
+    - -c
+    - "tail -f /dev/null"
+    volumeDevices:
+    - name: source-device
+      devicePath: /dev/source
+    - name: target-device
+      devicePath: /dev/target
+  volumes:
+  - name: source-device
+    persistentVolumeClaim:
+      claimName: source-device
+  - name: target-device
+    persistentVolumeClaim:
+      claimName: target-device

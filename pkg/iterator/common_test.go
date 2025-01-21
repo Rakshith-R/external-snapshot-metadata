@@ -297,3 +297,11 @@ func (th *testHarness) getChangedBlocks(ctx context.Context, grpcClient api.Snap
 	th.InGetChangedBlocksToken = securityToken
 	return th.RetGetChangedBlocksErr
 }
+
+func (th *testHarness) copyChangedBlocks(ctx context.Context, blockMetadata []*api.BlockMetadata) error {
+	return nil
+}
+
+func (th *testHarness) verifyFinalContents() error {
+	return nil
+}

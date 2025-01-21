@@ -17,12 +17,14 @@ limitations under the License.
 package iterator
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -85,6 +87,25 @@ type Args struct {
 	// identified by SnapshotName will be enumerated.
 	PrevSnapshotName string
 
+	// Verify is optional, and if true then the client will copy changed
+	// blocks from SourceDevice to TargetDevice and verify if the final
+	// contents match.
+	Verify bool
+
+	// SourceDevice is optional, and if specified will be used to copy
+	// changed blocks to the TargetDevice.
+	SourceDevice string
+
+	// TargetDevice is optional, and if specified will be used to copy
+	// changed blocks from the SourceDevice.
+	TargetDevice string
+
+	// Source contains the source device file descriptor.
+	Source *os.File
+
+	// Target contains the target device file descriptor.
+	Target *os.File
+
 	// StartingOffset is the initial byte offset.
 	StartingOffset int64
 
@@ -127,6 +148,8 @@ func (a Args) Validate() error {
 		return fmt.Errorf("%w: SAName provided but SANamespace missing", ErrInvalidArgs)
 	case a.SANamespace != "" && a.SAName == "":
 		return fmt.Errorf("%w: SANamespace provided but SAName missing", ErrInvalidArgs)
+	case a.Verify && (a.SourceDevice == "" || a.TargetDevice == ""):
+		return fmt.Errorf("%w: Verify requires SourceDevice and TargetDevice", ErrInvalidArgs)
 	}
 
 	if err := a.Clients.Validate(); err != nil {
@@ -173,6 +196,8 @@ type iteratorHelpers interface {
 	getGRPCClient(caCert []byte, URL string) (api.SnapshotMetadataClient, error)
 	getAllocatedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error
 	getChangedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error
+	copyChangedBlocks(ctx context.Context, blockMetadata []*api.BlockMetadata) error
+	verifyFinalContents() error
 }
 
 func newIterator(args Args) *iterator {
@@ -240,6 +265,11 @@ func (iter *iterator) run(ctx context.Context) error {
 	} else {
 		err = iter.h.getChangedBlocks(ctx, apiClient, securityToken)
 	}
+	if err != nil {
+		return err
+	}
+
+	err = iter.verifyFinalContents()
 
 	if err == nil {
 		iter.Emitter.SnapshotMetadataIteratorDone(iter.recordNum)
@@ -360,6 +390,11 @@ func (iter *iterator) getAllocatedBlocks(ctx context.Context, grpcClient api.Sna
 		}) {
 			return ErrCancelled
 		}
+
+		err = iter.copyChangedBlocks(ctx, resp.BlockMetadata)
+		if err != nil {
+			return err
+		}
 	}
 }
 
@@ -394,6 +429,71 @@ func (iter *iterator) getChangedBlocks(ctx context.Context, grpcClient api.Snaps
 			BlockMetadata:       resp.BlockMetadata,
 		}) {
 			return ErrCancelled
+		}
+
+		err = iter.copyChangedBlocks(ctx, resp.BlockMetadata)
+		if err != nil {
+			return err
+		}
+	}
+}
+
+func (iter *iterator) copyChangedBlocks(ctx context.Context, blockMetadata []*api.BlockMetadata) error {
+	if !iter.Verify {
+		return nil
+	}
+
+	for _, bmd := range blockMetadata {
+		buffer := make([]byte, bmd.SizeBytes)
+		_, err := iter.Source.Seek(bmd.ByteOffset, io.SeekStart)
+		if err != nil {
+			return fmt.Errorf("failed to seek source device(offset: %d, size bytes: %d): %w", bmd.ByteOffset, bmd.SizeBytes, err)
+		}
+		iter.Source.Stat()
+		_, err = iter.Source.Read(buffer)
+		if err != nil {
+			return fmt.Errorf("failed to read source device(offset: %d, size bytes: %d): %w", bmd.ByteOffset, bmd.SizeBytes, err)
+		}
+		_, err = iter.Target.WriteAt(buffer, bmd.ByteOffset)
+		if err != nil {
+			return fmt.Errorf("failed to write target device(offset: %d, size bytes: %d): %w", bmd.ByteOffset, bmd.SizeBytes, err)
+		}
+	}
+
+	return nil
+}
+
+func (iter *iterator) verifyFinalContents() error {
+	if !iter.Verify {
+		return nil
+	}
+	_, err := iter.Source.Seek(0, io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("failed to seek source device to start: %w", err)
+	}
+	_, err = iter.Target.Seek(0, io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("failed to seek target device to start: %w", err)
+	}
+	const chunkSize = 256
+	sourceBuffer := make([]byte, chunkSize)
+	targetBuffer := make([]byte, chunkSize)
+	for {
+		_, sourceErr := iter.Source.Read(sourceBuffer)
+		_, targetErr := iter.Target.Read(targetBuffer)
+
+		if sourceErr != nil || targetErr != nil {
+			if sourceErr == io.EOF && targetErr == io.EOF {
+				return nil
+			} else if sourceErr == io.EOF || targetErr == io.EOF {
+				return errors.New("source and target device contents do not match")
+			} else {
+				return fmt.Errorf("error reading source and target device contents: source(%w) target(%w)", sourceErr, targetErr)
+			}
+		}
+
+		if !bytes.Equal(sourceBuffer, targetBuffer) {
+			return errors.New("source and target device contents do not match")
 		}
 	}
 }
