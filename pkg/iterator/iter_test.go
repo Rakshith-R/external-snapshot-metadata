@@ -115,6 +115,22 @@ func TestValidateArgs(t *testing.T) {
 	args.SAName = "serviceAccount"
 	err = args.Validate()
 	assert.NoError(t, err)
+
+	args.Verify = true
+	err = args.Validate()
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidArgs)
+	assert.ErrorContains(t, err, "Verify requires SourceDevicePath and TargetDevicePath")
+
+	args.SourceDevicePath = "/dev/source"
+	err = args.Validate()
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidArgs)
+	assert.ErrorContains(t, err, "Verify requires SourceDevicePath and TargetDevicePath")
+
+	args.TargetDevicePath = "/dev/target"
+	err = args.Validate()
+	assert.NoError(t, err)
 }
 
 func TestNewIterator(t *testing.T) {
