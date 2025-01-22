@@ -30,7 +30,7 @@ type JSONEmitter struct {
 	listNotEmpty bool
 }
 
-func (e *JSONEmitter) SnapshotMetadataIteratorRecord(recordNumber int, metadata IteratorMetadata) bool {
+func (e *JSONEmitter) SnapshotMetadataIteratorRecord(recordNumber int, metadata IteratorMetadata) error {
 	prefix := "," // termination of previous record
 	if recordNumber == 1 {
 		prefix = "[" // no previous, start of list
@@ -42,15 +42,17 @@ func (e *JSONEmitter) SnapshotMetadataIteratorRecord(recordNumber int, metadata 
 
 	fmt.Fprintf(e.Writer, "%s%s", prefix, strings.TrimSuffix(b.String(), "\n"))
 
-	return true
+	return nil
 }
 
-func (e *JSONEmitter) SnapshotMetadataIteratorDone(_ int) {
+func (e *JSONEmitter) SnapshotMetadataIteratorDone(_ int) error {
 	if e.listNotEmpty {
 		fmt.Fprintf(e.Writer, "]") // termination of previous, end of list
 	} else {
 		fmt.Fprintf(e.Writer, "[]") // empty list
 	}
+
+	return nil
 }
 
 // TableEmitter formats the metadata as a table.
@@ -66,7 +68,7 @@ const (
 	tableRowFmt  = "%7d %14d %17s %14d %14d\n"
 )
 
-func (e *TableEmitter) SnapshotMetadataIteratorRecord(recordNumber int, metadata IteratorMetadata) bool {
+func (e *TableEmitter) SnapshotMetadataIteratorRecord(recordNumber int, metadata IteratorMetadata) error {
 	if recordNumber == 1 {
 		fmt.Fprintf(e.Writer, "%s\n%s\n", tableHeader1, tableHeader2)
 	}
@@ -76,7 +78,9 @@ func (e *TableEmitter) SnapshotMetadataIteratorRecord(recordNumber int, metadata
 		fmt.Fprintf(e.Writer, tableRowFmt, recordNumber, metadata.VolumeCapacityBytes, bmt, bmd.ByteOffset, bmd.SizeBytes)
 	}
 
-	return true
+	return nil
 }
 
-func (e *TableEmitter) SnapshotMetadataIteratorDone(_ int) {}
+func (e *TableEmitter) SnapshotMetadataIteratorDone(_ int) error {
+	return nil
+}
