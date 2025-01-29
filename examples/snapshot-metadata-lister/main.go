@@ -73,9 +73,12 @@ func parseFlags() {
 		flag.StringVar(sVar, shortName, defaultValue, fmt.Sprintf("Shorthand for -%s", longName))
 	}
 
+	flag.BoolVar(&args.Verify, "verify", false, "If true, the changed blocks are copied and contents verified between source-device and target-device.")
 	stringFlag(&args.Namespace, "namespace", "n", "", "The Namespace containing the VolumeSnapshot objects.")
 	stringFlag(&args.SnapshotName, "snapshot", "s", "", "The name of the VolumeSnapshot for which metadata is to be displayed.")
 	stringFlag(&args.PrevSnapshotName, "previous-snapshot", "p", "", "The name of an earlier VolumeSnapshot against which changed block metadata is to be displayed.")
+	stringFlag(&args.SourceDevicePath, "source-device-path", "src", "", "The source device to use for verification.")
+	stringFlag(&args.TargetDevicePath, "target-device-path", "tgt", "", "The target device to use for verification.")
 	stringFlag(&outputFormat, "output-format", "o", "table", "The format of the output. Possible values: \"table\" or \"json\".")
 
 	if home := homedir.HomeDir(); home != "" {
