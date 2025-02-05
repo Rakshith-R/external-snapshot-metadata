@@ -62,7 +62,7 @@ func GetSnapshotMetadata(ctx context.Context, args Args) error {
 		return err
 	}
 
-	return newIterator(args).run(ctx)
+	return NewIterator(args).Run(ctx)
 }
 
 type Args struct {
@@ -148,17 +148,14 @@ type IteratorMetadata struct {
 type IteratorEmitter interface {
 	// SnapshotMetadataIteratorRecord is invoked for each record received
 	// from the gRPC stream.
-	// The operation should return true to continue or false to stop
-	// enumerating the records. If false was returned then the iterator
-	// will terminate with an ErrCancelled error.
-	SnapshotMetadataIteratorRecord(recordNumber int, metadata IteratorMetadata) bool
+	SnapshotMetadataIteratorRecord(recordNumber int, metadata IteratorMetadata) error
 
 	// SnapshotMetadataIteratorDone is called prior to termination as long as
 	// no error was encountered.
-	SnapshotMetadataIteratorDone(numberRecords int)
+	SnapshotMetadataIteratorDone(numberRecords int) error
 }
 
-type iterator struct {
+type Iterator struct {
 	Args
 	recordNum int
 
@@ -175,8 +172,8 @@ type iteratorHelpers interface {
 	getChangedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error
 }
 
-func newIterator(args Args) *iterator {
-	iter := &iterator{}
+func NewIterator(args Args) *Iterator {
+	iter := &Iterator{}
 	iter.Args = args
 	iter.h = iter
 
@@ -193,7 +190,7 @@ func newIterator(args Args) *iterator {
 // return ErrCancelled.
 // When the enumeration terminates normally the emitter's
 // SnapshotMetadataIteratorDone operation is invoked.
-func (iter *iterator) run(ctx context.Context) error {
+func (iter *Iterator) Run(ctx context.Context) error {
 	var err error
 
 	saName := iter.SAName           // optional field
@@ -240,15 +237,14 @@ func (iter *iterator) run(ctx context.Context) error {
 	} else {
 		err = iter.h.getChangedBlocks(ctx, apiClient, securityToken)
 	}
-
-	if err == nil {
-		iter.Emitter.SnapshotMetadataIteratorDone(iter.recordNum)
+	if err != nil {
+		return err
 	}
 
-	return err
+	return iter.Emitter.SnapshotMetadataIteratorDone(iter.recordNum)
 }
 
-func (iter *iterator) getDefaultServiceAccount(ctx context.Context) (namespace string, name string, err error) {
+func (iter *Iterator) getDefaultServiceAccount(ctx context.Context) (namespace string, name string, err error) {
 	ssr, err := iter.KubeClient.AuthenticationV1().SelfSubjectReviews().Create(ctx, &authv1.SelfSubjectReview{}, apimetav1.CreateOptions{})
 	if err != nil {
 		return "", "", fmt.Errorf("SelfSubjectReviews.Create(): %w", err)
@@ -265,7 +261,7 @@ func (iter *iterator) getDefaultServiceAccount(ctx context.Context) (namespace s
 
 // getCSIDriverFromPrimarySnapshot loads the bound VolumeSnapshotContent
 // of the VolumeSnapshot identified by SnapshotName to fetch the CSI driver.
-func (iter *iterator) getCSIDriverFromPrimarySnapshot(ctx context.Context) (string, error) {
+func (iter *Iterator) getCSIDriverFromPrimarySnapshot(ctx context.Context) (string, error) {
 	vs, err := iter.SnapshotClient.SnapshotV1().VolumeSnapshots(iter.Namespace).Get(ctx, iter.SnapshotName, apimetav1.GetOptions{})
 	if err != nil {
 		return "", fmt.Errorf("VolumeSnapshots.Get(%s/%s): %w", iter.Namespace, iter.SnapshotName, err)
@@ -285,7 +281,7 @@ func (iter *iterator) getCSIDriverFromPrimarySnapshot(ctx context.Context) (stri
 	return vsc.Spec.Driver, nil
 }
 
-func (iter *iterator) getSnapshotMetadataServiceCR(ctx context.Context, csiDriver string) (*smsCRv1alpha1.SnapshotMetadataService, error) {
+func (iter *Iterator) getSnapshotMetadataServiceCR(ctx context.Context, csiDriver string) (*smsCRv1alpha1.SnapshotMetadataService, error) {
 	sms, err := iter.SmsCRClient.CbtV1alpha1().SnapshotMetadataServices().Get(ctx, csiDriver, apimetav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("SnapshotMetadataServices.Get(%s): %w", csiDriver, err)
@@ -296,7 +292,7 @@ func (iter *iterator) getSnapshotMetadataServiceCR(ctx context.Context, csiDrive
 
 // createSecurityToken will create a security token for the specified storage
 // account using the audience string from the SnapshotMetadataService CR.
-func (iter *iterator) createSecurityToken(ctx context.Context, saNamespace, sa, audience string) (string, error) {
+func (iter *Iterator) createSecurityToken(ctx context.Context, saNamespace, sa, audience string) (string, error) {
 	tokenRequest := authv1.TokenRequest{
 		Spec: authv1.TokenRequestSpec{
 			Audiences:         []string{audience},
@@ -313,7 +309,7 @@ func (iter *iterator) createSecurityToken(ctx context.Context, saNamespace, sa, 
 	return tokenResp.Status.Token, nil
 }
 
-func (iter *iterator) getGRPCClient(caCert []byte, url string) (api.SnapshotMetadataClient, error) {
+func (iter *Iterator) getGRPCClient(caCert []byte, url string) (api.SnapshotMetadataClient, error) {
 	// Add the CA to the cert pool
 	certPool := x509.NewCertPool()
 	if !certPool.AppendCertsFromPEM(caCert) {
@@ -329,7 +325,7 @@ func (iter *iterator) getGRPCClient(caCert []byte, url string) (api.SnapshotMeta
 	return api.NewSnapshotMetadataClient(conn), nil
 }
 
-func (iter *iterator) getAllocatedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error {
+func (iter *Iterator) getAllocatedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error {
 	stream, err := grpcClient.GetMetadataAllocated(ctx, &api.GetMetadataAllocatedRequest{
 		SecurityToken:  securityToken,
 		Namespace:      iter.Namespace,
@@ -353,17 +349,18 @@ func (iter *iterator) getAllocatedBlocks(ctx context.Context, grpcClient api.Sna
 
 		iter.recordNum++
 
-		if !iter.Emitter.SnapshotMetadataIteratorRecord(iter.recordNum, IteratorMetadata{
+		err = iter.Emitter.SnapshotMetadataIteratorRecord(iter.recordNum, IteratorMetadata{
 			BlockMetadataType:   resp.BlockMetadataType,
 			VolumeCapacityBytes: resp.VolumeCapacityBytes,
 			BlockMetadata:       resp.BlockMetadata,
-		}) {
-			return ErrCancelled
+		})
+		if err != nil {
+			return err
 		}
 	}
 }
 
-func (iter *iterator) getChangedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error {
+func (iter *Iterator) getChangedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error {
 	stream, err := grpcClient.GetMetadataDelta(ctx, &api.GetMetadataDeltaRequest{
 		SecurityToken:      securityToken,
 		Namespace:          iter.Namespace,
@@ -388,12 +385,13 @@ func (iter *iterator) getChangedBlocks(ctx context.Context, grpcClient api.Snaps
 
 		iter.recordNum++
 
-		if !iter.Emitter.SnapshotMetadataIteratorRecord(iter.recordNum, IteratorMetadata{
+		err = iter.Emitter.SnapshotMetadataIteratorRecord(iter.recordNum, IteratorMetadata{
 			BlockMetadataType:   resp.BlockMetadataType,
 			VolumeCapacityBytes: resp.VolumeCapacityBytes,
 			BlockMetadata:       resp.BlockMetadata,
-		}) {
-			return ErrCancelled
+		})
+		if err != nil {
+			return err
 		}
 	}
 }
