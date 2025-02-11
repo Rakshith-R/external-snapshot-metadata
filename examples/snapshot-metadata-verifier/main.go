@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes Authors.
+Copyright 2025 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import (
 	"k8s.io/client-go/util/homedir"
 
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/iterator"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/verifier"
 )
 
 const (
@@ -62,11 +63,8 @@ Flags:
 
 // globals set by flags
 var (
-	args                               iterator.Args
-	kubeConfig                         string
-	outputFormat                       string
-	sourceDevicePath, targetDevicePath string
-	verify                             bool
+	args       verifier.Args
+	kubeConfig string
 )
 
 func parseFlags() {
@@ -78,9 +76,8 @@ func parseFlags() {
 	stringFlag(&args.Namespace, "namespace", "n", "", "The Namespace containing the VolumeSnapshot objects.")
 	stringFlag(&args.SnapshotName, "snapshot", "s", "", "The name of the VolumeSnapshot for which metadata is to be displayed.")
 	stringFlag(&args.PrevSnapshotName, "previous-snapshot", "p", "", "The name of an earlier VolumeSnapshot against which changed block metadata is to be displayed.")
-	stringFlag(&sourceDevicePath, "source-device-path", "src", "", "The source device to use for verification.")
-	stringFlag(&targetDevicePath, "target-device-path", "tgt", "", "The target device to use for verification.")
-	stringFlag(&outputFormat, "output-format", "o", "table", "The format of the output. Possible values: \"table\" or \"json\".")
+	stringFlag(&args.SourceDevicePath, "source-device-path", "src", "", "The source device to use for verification.")
+	stringFlag(&args.TargetDevicePath, "target-device-path", "tgt", "", "The target device to use for verification.")
 
 	if home := homedir.HomeDir(); home != "" {
 		flag.StringVar(&kubeConfig, "kubeconfig", filepath.Join(home, ".kube", "config"), "Path to the kubeconfig file.")
@@ -99,7 +96,6 @@ func parseFlags() {
 
 	var showHelp bool
 	flag.BoolVar(&showHelp, "h", false, "Show the full usage message.")
-	flag.BoolVar(&verify, "verify", false, "Verify the changed blocks between two snapshots.")
 
 	progName := filepath.Base(os.Args[0])
 	flag.Usage = func() {
@@ -119,25 +115,6 @@ func parseFlags() {
 		fmt.Fprintf(os.Stderr, usageFmt, progName)
 		flag.PrintDefaults()
 		os.Exit(0)
-	}
-
-	if verify {
-		if sourceDevicePath == "" || targetDevicePath == "" {
-			fmt.Fprintf(os.Stderr, "Missing required arguments\n")
-			flag.Usage()
-			os.Exit(1)
-		}
-	}
-
-	switch outputFormat {
-	case "table":
-		args.Emitter = &iterator.TableEmitter{Writer: os.Stdout}
-	case "json":
-		args.Emitter = &iterator.JSONEmitter{Writer: os.Stdout}
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown output format: %s\n", outputFormat)
-		flag.Usage()
-		os.Exit(1)
 	}
 }
 
@@ -160,38 +137,29 @@ func main() {
 
 	args.Clients = clients
 
-	ctx, stopFn := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stopFn()
-
-	if err := iterator.GetSnapshotMetadata(ctx, args); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	if !verify {
-		os.Exit(0)
-	}
-
-	sourceDevice, err := os.Open(sourceDevicePath)
+	sourceDevice, err := os.Open(args.SourceDevicePath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to open source device %s: %q", sourceDevicePath, err)
+		fmt.Fprintf(os.Stderr, "failed to open source device %s: %q", args.SourceDevicePath, err)
 		os.Exit(1)
 	}
 	defer sourceDevice.Close()
 
-	targetDevice, err := os.OpenFile(targetDevicePath, os.O_RDWR, 0644)
+	targetDevice, err := os.OpenFile(args.TargetDevicePath, os.O_RDWR, 0644)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to open target device %s: %q", targetDevicePath, err)
+		fmt.Fprintf(os.Stderr, "failed to open target device %s: %q", args.TargetDevicePath, err)
 		os.Exit(1)
 	}
 	defer targetDevice.Close()
 
-	args.Emitter = &iterator.VerifierEmitter{
+	args.Emitter = &verifier.VerifierEmitter{
 		SourceDevice: sourceDevice,
 		TargetDevice: targetDevice,
 	}
 
-	if err := iterator.GetSnapshotMetadata(ctx, args); err != nil {
+	ctx, stopFn := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stopFn()
+
+	if err := verifier.VerifySnapshotMetadata(ctx, args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

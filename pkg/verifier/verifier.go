@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes Authors.
+Copyright 2025 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,76 +14,74 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package iterator
+package verifier
 
 import (
 	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
 	"io"
 	"os"
-	"strings"
+
+	iter "github.com/kubernetes-csi/external-snapshot-metadata/pkg/iterator"
 )
 
-// JSONEmitter formats the metadata in JSON.
-type JSONEmitter struct {
-	Writer       io.Writer
-	listNotEmpty bool
-}
-
-func (e *JSONEmitter) SnapshotMetadataIteratorRecord(recordNumber int, metadata IteratorMetadata) error {
-	prefix := "," // termination of previous record
-	if recordNumber == 1 {
-		prefix = "[" // no previous, start of list
-		e.listNotEmpty = true
+// VerifySnapshotMetadata enumerates either the allocated blocks of a
+// VolumeSnapshot object, or the blocks changed between a pair of
+// VolumeSnapshot objects.
+//
+// Metadata is returned via an emitter interface specified in the
+// invocation arguments. Iteration terminates on the first error
+// encountered, or if requested by the emitter.
+func VerifySnapshotMetadata(ctx context.Context, args Args) error {
+	if err := args.Validate(); err != nil {
+		return err
 	}
 
-	var b bytes.Buffer
-	_ = json.NewEncoder(&b).Encode(metadata)
-
-	fmt.Fprintf(e.Writer, "%s%s", prefix, strings.TrimSuffix(b.String(), "\n"))
-
-	return nil
+	return newVerifierIterator(args).Run(ctx)
 }
 
-func (e *JSONEmitter) SnapshotMetadataIteratorDone(_ int) error {
-	if e.listNotEmpty {
-		fmt.Fprintf(e.Writer, "]") // termination of previous, end of list
-	} else {
-		fmt.Fprintf(e.Writer, "[]") // empty list
+type Args struct {
+	iter.Args
+
+	// SourceDevicePath is optional, and if specified SourceDevice will be used to copy
+	// changed blocks to the TargetDevice.
+	SourceDevicePath string
+
+	// TargetDevice is optional, and if specified changed blocks from the SourceDevice
+	// will be copied to it.
+	TargetDevicePath string
+}
+
+func (a *Args) Validate() error {
+	err := a.Args.Validate()
+	if err != nil {
+		return err
 	}
 
-	return nil
-}
-
-// TableEmitter formats the metadata as a table.
-type TableEmitter struct {
-	Writer io.Writer
-}
-
-const (
-	// A TiB is this long: 1099511627776
-	// BlockMetadataType is 15 chars max
-	tableHeader1 = "Record#   VolCapBytes  BlockMetadataType   ByteOffset     SizeBytes"
-	tableHeader2 = "------- -------------- ----------------- -------------- --------------"
-	tableRowFmt  = "%7d %14d %17s %14d %14d\n"
-)
-
-func (e *TableEmitter) SnapshotMetadataIteratorRecord(recordNumber int, metadata IteratorMetadata) error {
-	if recordNumber == 1 {
-		fmt.Fprintf(e.Writer, "%s\n%s\n", tableHeader1, tableHeader2)
+	if a.SourceDevicePath == "" || a.TargetDevicePath == "" {
+		return fmt.Errorf("%w: Verify requires SourceDevicePath and TargetDevicePath", iter.ErrInvalidArgs)
 	}
 
-	bmt := metadata.BlockMetadataType.String()
-	for _, bmd := range metadata.BlockMetadata {
-		fmt.Fprintf(e.Writer, tableRowFmt, recordNumber, metadata.VolumeCapacityBytes, bmt, bmd.ByteOffset, bmd.SizeBytes)
+	if err = a.Clients.Validate(); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func (e *TableEmitter) SnapshotMetadataIteratorDone(_ int) error {
-	return nil
+type VerifierIterator struct {
+	iter.Iterator
+	Args
+}
+
+func newVerifierIterator(args Args) *VerifierIterator {
+	verifierIter := &VerifierIterator{
+		Iterator: iter.New(args.Args),
+		Args:     args,
+	}
+
+	return verifierIter
 }
 
 // VerifierEmitter formats the metadata as a table.
@@ -95,7 +93,7 @@ type VerifierEmitter struct {
 	TargetDevice *os.File
 }
 
-func (verifierEmitter *VerifierEmitter) SnapshotMetadataIteratorRecord(_ int, metadata IteratorMetadata) error {
+func (verifierEmitter *VerifierEmitter) SnapshotMetadataIteratorRecord(_ int, metadata iter.IteratorMetadata) error {
 	for _, bmd := range metadata.BlockMetadata {
 		buffer := make([]byte, bmd.SizeBytes)
 		// Seek to the block's offset in the source device.

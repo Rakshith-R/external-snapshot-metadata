@@ -26,7 +26,7 @@ import (
 	"github.com/golang/mock/gomock"
 	fakesnapshot "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned/fake"
 	"github.com/stretchr/testify/assert"
-	apiruntime "k8s.io/apimachinery/pkg/runtime"
+	apiRuntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	clientgotesting "k8s.io/client-go/testing"
 
@@ -117,14 +117,14 @@ func TestValidateArgs(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestNewIterator(t *testing.T) {
+func TestNew(t *testing.T) {
 	args := Args{
 		// no Client or else the Equal check will recurse infinitely
 		Namespace:    "namespace",
 		SnapshotName: "snapshot",
 	}
 
-	l := newIterator(args)
+	l := New(args)
 	assert.NotNil(t, l)
 
 	assert.Equal(t, l, l.h)
@@ -150,7 +150,7 @@ func TestRun(t *testing.T) {
 		iter.SAName = ""
 		assert.NotEmpty(t, iter.PrevSnapshotName) // changed block flow
 
-		err := iter.run(context.Background())
+		err := iter.Run(context.Background())
 		assert.NoError(t, err)
 
 		// check data passed through the helpers
@@ -182,7 +182,7 @@ func TestRun(t *testing.T) {
 		iter.PrevSnapshotName = ""
 		iter.CSIDriver = th.CSIDriver
 
-		err := iter.run(context.Background())
+		err := iter.Run(context.Background())
 		assert.NoError(t, err)
 
 		// check data passed through the helpers
@@ -208,7 +208,7 @@ func TestRun(t *testing.T) {
 		iter := th.NewTestIterator()
 		assert.NotEmpty(t, iter.PrevSnapshotName) // changed block flow
 
-		err := iter.run(context.Background())
+		err := iter.Run(context.Background())
 		assert.ErrorIs(t, err, testErr)
 
 		assert.True(t, th.CalledGetCSIDriverFromPrimarySnapshot)
@@ -223,7 +223,7 @@ func TestRun(t *testing.T) {
 		iter.PrevSnapshotName = ""
 		iter.CSIDriver = th.CSIDriver
 
-		err := iter.run(context.Background())
+		err := iter.Run(context.Background())
 		assert.ErrorIs(t, err, testErr)
 
 		assert.Equal(t, th.CSIDriver, th.InGetSnapshotMetadataServiceCRCSIDriver)
@@ -240,7 +240,7 @@ func TestRun(t *testing.T) {
 		iter.PrevSnapshotName = ""
 		iter.CSIDriver = th.CSIDriver
 
-		err := iter.run(context.Background())
+		err := iter.Run(context.Background())
 		assert.ErrorIs(t, err, testErr)
 
 		assert.Equal(t, th.Audience, th.InCreateSecurityTokenAudience)
@@ -257,7 +257,7 @@ func TestRun(t *testing.T) {
 		iter.PrevSnapshotName = ""
 		iter.CSIDriver = th.CSIDriver
 
-		err := iter.run(context.Background())
+		err := iter.Run(context.Background())
 		assert.ErrorIs(t, err, testErr)
 
 		assert.Equal(t, th.CACert, th.InGetGRPCClientCA)
@@ -275,7 +275,7 @@ func TestRun(t *testing.T) {
 		iter.recordNum = 100
 		iter.CSIDriver = th.CSIDriver
 
-		err := iter.run(context.Background())
+		err := iter.Run(context.Background())
 		assert.ErrorIs(t, err, testErr)
 
 		// check data passed through the helpers
@@ -301,7 +301,7 @@ func TestRun(t *testing.T) {
 		iter.CSIDriver = th.CSIDriver
 		iter.PrevSnapshotName = ""
 
-		err := iter.run(context.Background())
+		err := iter.Run(context.Background())
 		assert.ErrorIs(t, err, testErr)
 
 		// check data passed through the helpers
@@ -333,7 +333,7 @@ func TestGetDefaultServiceAccount(t *testing.T) {
 		th := newTestHarness()
 		iter := th.NewTestIterator()
 
-		th.FakeKubeClient.PrependReactor("create", "selfsubjectreviews", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+		th.FakeKubeClient.PrependReactor("create", "selfsubjectreviews", func(action clientgotesting.Action) (handled bool, ret apiRuntime.Object, err error) {
 			ssr := th.FakeAuthSelfSubjectReview()
 			ssr.Status.UserInfo.Username += ":additionalfield"
 			return true, ssr, nil
@@ -350,7 +350,7 @@ func TestGetDefaultServiceAccount(t *testing.T) {
 		th := newTestHarness()
 		iter := th.NewTestIterator()
 
-		th.FakeKubeClient.PrependReactor("create", "selfsubjectreviews", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+		th.FakeKubeClient.PrependReactor("create", "selfsubjectreviews", func(action clientgotesting.Action) (handled bool, ret apiRuntime.Object, err error) {
 			ssr := th.FakeAuthSelfSubjectReview()
 			return true, ssr, nil
 		})
@@ -379,7 +379,7 @@ func TestGetCSIDriverFromPrimarySnapshot(t *testing.T) {
 		iter := th.NewTestIterator()
 		vs, _ := th.FakeVS()
 
-		th.FakeSnapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+		th.FakeSnapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiRuntime.Object, err error) {
 			ga := action.(clientgotesting.GetAction)
 			vs.Namespace = ga.GetNamespace()
 			vs.Name = ga.GetName()
@@ -398,7 +398,7 @@ func TestGetCSIDriverFromPrimarySnapshot(t *testing.T) {
 		iter := th.NewTestIterator()
 		vs, _ := th.FakeVS()
 
-		th.FakeSnapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+		th.FakeSnapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiRuntime.Object, err error) {
 			ga := action.(clientgotesting.GetAction)
 			vs.Namespace = ga.GetNamespace()
 			vs.Name = ga.GetName()
@@ -417,7 +417,7 @@ func TestGetCSIDriverFromPrimarySnapshot(t *testing.T) {
 		iter := th.NewTestIterator()
 		vs, _ := th.FakeVS()
 
-		th.FakeSnapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+		th.FakeSnapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiRuntime.Object, err error) {
 			ga := action.(clientgotesting.GetAction)
 			vs.Namespace = ga.GetNamespace()
 			vs.Name = ga.GetName()
@@ -435,14 +435,14 @@ func TestGetCSIDriverFromPrimarySnapshot(t *testing.T) {
 		iter := th.NewTestIterator()
 		vs, vsc := th.FakeVS()
 
-		th.FakeSnapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+		th.FakeSnapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiRuntime.Object, err error) {
 			ga := action.(clientgotesting.GetAction)
 			vs.Namespace = ga.GetNamespace()
 			vs.Name = ga.GetName()
 			return true, vs, nil
 		})
 
-		th.FakeSnapshotClient.PrependReactor("get", "volumesnapshotcontents", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+		th.FakeSnapshotClient.PrependReactor("get", "volumesnapshotcontents", func(action clientgotesting.Action) (handled bool, ret apiRuntime.Object, err error) {
 			ga := action.(clientgotesting.GetAction)
 			vsc.Name = ga.GetName()
 			return true, vsc, nil
@@ -470,7 +470,7 @@ func TestGetSnapshotMetadataServiceCR(t *testing.T) {
 		iter := th.NewTestIterator()
 		fakeCR := th.FakeCR()
 
-		th.FakeSmsCRClient.PrependReactor("get", "snapshotmetadataservices", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+		th.FakeSmsCRClient.PrependReactor("get", "snapshotmetadataservices", func(action clientgotesting.Action) (handled bool, ret apiRuntime.Object, err error) {
 			ga := action.(clientgotesting.GetAction)
 			if ga.GetName() != th.CSIDriver {
 				return false, nil, nil
@@ -499,7 +499,7 @@ func TestCreateSecurityToken(t *testing.T) {
 		th := newTestHarness()
 		iter := th.NewTestIterator()
 
-		th.FakeKubeClient.PrependReactor("create", "serviceaccounts", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+		th.FakeKubeClient.PrependReactor("create", "serviceaccounts", func(action clientgotesting.Action) (handled bool, ret apiRuntime.Object, err error) {
 			return true, th.FakeTokenRequest(), nil
 		})
 
@@ -617,7 +617,7 @@ func TestGetAllocatedBlocks(t *testing.T) {
 
 	t.Run("stream-rec-rec-EOF", func(t *testing.T) {
 		th := newTestHarness()
-		th.RetSnapshotMetadataIteratorRecord = true
+		th.RetSnapshotMetadataIteratorRecord = nil
 		iter := th.NewTestIterator()
 
 		mockController := gomock.NewController(t)
@@ -642,7 +642,7 @@ func TestGetAllocatedBlocks(t *testing.T) {
 
 	t.Run("stream-rec-rec-Err", func(t *testing.T) {
 		th := newTestHarness()
-		th.RetSnapshotMetadataIteratorRecord = true
+		th.RetSnapshotMetadataIteratorRecord = nil
 		iter := th.NewTestIterator()
 
 		mockController := gomock.NewController(t)
@@ -668,7 +668,7 @@ func TestGetAllocatedBlocks(t *testing.T) {
 
 	t.Run("stream-rec-ABORT", func(t *testing.T) {
 		th := newTestHarness()
-		th.RetSnapshotMetadataIteratorRecord = true
+		th.RetSnapshotMetadataIteratorRecord = nil
 		iter := th.NewTestIterator()
 
 		mockController := gomock.NewController(t)
@@ -678,7 +678,7 @@ func TestGetAllocatedBlocks(t *testing.T) {
 		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataAllocatedClient(mockController)
 
 		mockStream.EXPECT().Recv().Return(responses[0], nil) // one record only
-		th.RetSnapshotMetadataIteratorRecord = false         // then abort
+		th.RetSnapshotMetadataIteratorRecord = ErrCancelled  // then abort
 
 		expReq := th.FakeGetMetadataAllocatedRequest()
 		mockClient.EXPECT().GetMetadataAllocated(gomock.Any(), expReq).Return(mockStream, nil)
@@ -759,7 +759,7 @@ func TestGetChangedBlocks(t *testing.T) {
 
 	t.Run("stream-rec-rec-EOF", func(t *testing.T) {
 		th := newTestHarness()
-		th.RetSnapshotMetadataIteratorRecord = true
+		th.RetSnapshotMetadataIteratorRecord = nil
 		iter := th.NewTestIterator()
 
 		mockController := gomock.NewController(t)
@@ -784,7 +784,7 @@ func TestGetChangedBlocks(t *testing.T) {
 
 	t.Run("stream-rec-rec-Err", func(t *testing.T) {
 		th := newTestHarness()
-		th.RetSnapshotMetadataIteratorRecord = true
+		th.RetSnapshotMetadataIteratorRecord = nil
 		iter := th.NewTestIterator()
 
 		mockController := gomock.NewController(t)
@@ -810,7 +810,7 @@ func TestGetChangedBlocks(t *testing.T) {
 
 	t.Run("stream-rec-ABORT", func(t *testing.T) {
 		th := newTestHarness()
-		th.RetSnapshotMetadataIteratorRecord = true
+		th.RetSnapshotMetadataIteratorRecord = nil
 		iter := th.NewTestIterator()
 
 		mockController := gomock.NewController(t)
@@ -820,7 +820,7 @@ func TestGetChangedBlocks(t *testing.T) {
 		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataDeltaClient(mockController)
 
 		mockStream.EXPECT().Recv().Return(responses[0], nil) // one record only
-		th.RetSnapshotMetadataIteratorRecord = false         // then abort
+		th.RetSnapshotMetadataIteratorRecord = ErrCancelled  // then abort
 
 		expReq := th.FakeGetMetadataDeltaRequest()
 		mockClient.EXPECT().GetMetadataDelta(gomock.Any(), expReq).Return(mockStream, nil)
