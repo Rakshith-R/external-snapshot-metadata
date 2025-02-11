@@ -124,8 +124,8 @@ func (th *testHarness) Clients() Clients {
 	}
 }
 
-func (th *testHarness) NewTestIterator() *Iterator {
-	iter := NewIterator(th.Args())
+func (th *testHarness) NewTestIterator() *iterator {
+	iter := New(th.Args())
 	iter.h = th // use the fake test helpers
 	return iter
 }

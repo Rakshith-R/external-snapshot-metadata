@@ -99,7 +99,7 @@ jobs:
           kubectl cp ./snapshot-metadata-verifier default/backup-app-client:/snapshot-metadata-verifier -c run-client
           
           echo "Execute external-snapshot-metadata-client to list allocated blocks in snap-1"
-          kubectl exec backup-app-client -- /snapshot-metadata-lister -max-results 10 -snapshot snap-1 -starting-offset 0 -namespace default -kubeconfig=""
+          kubectl exec backup-app-client -- /snapshot-metadata-lister -max-results 10 -snapshot snap-1 -starting-offset 0 -namespace default -kubeconfig="" -source-device-path /dev/source -target-device-path /dev/target -verify
 
           echo "Execute external-snapshot-metadata-client to list allocated blocks and verify the data allocated in snap-1"
           kubectl exec backup-app-client -- /snapshot-metadata-verifier -max-results 10 -snapshot snap-1 -starting-offset 0 -namespace default -kubeconfig="" -source-device-path /dev/source -target-device-path /dev/target
@@ -152,7 +152,7 @@ jobs:
           kubectl cp ./snapshot-metadata-verifier default/backup-app-client:/snapshot-metadata-verifier -c run-client
 
           echo "Execute external-snapshot-metadata-client to list changed blocks between snap-1 and snap-2"
-          kubectl exec backup-app-client -- /snapshot-metadata-lister -max-results 10 -previous-snapshot snap-1 -snapshot snap-2 -starting-offset 0 -namespace default -kubeconfig=""
+          kubectl exec backup-app-client -- /snapshot-metadata-lister -max-results 10 -previous-snapshot snap-1 -snapshot snap-2 -starting-offset 0 -namespace default -kubeconfig="" -source-device-path /dev/source -target-device-path /dev/target -verify
 
           echo "Execute external-snapshot-metadata-client to verify the data between snap-1 and snap-2"
           kubectl exec backup-app-client -- /snapshot-metadata-verifier -max-results 10 -previous-snapshot snap-1 -snapshot snap-2 -starting-offset 0 -namespace default -kubeconfig="" -source-device-path /dev/source -target-device-path /dev/target
@@ -162,7 +162,7 @@ jobs:
           
           echo "Execute external-snapshot-metadata-client to expect a failure"
           export failed=0
-          kubectl exec backup-app-client -- /snapshot-metadata-verifier -max-results 10 -previous-snapshot snap-1 -snapshot snap-2 -starting-offset 0 -namespace default -kubeconfig="" -source-device-path /dev/source -target-device-path /dev/target || { export failed=1; true;}
+          kubectl exec backup-app-client -- /snapshot-metadata-lister -max-results 10 -previous-snapshot snap-1 -snapshot snap-2 -starting-offset 0 -namespace default -kubeconfig="" -verify -source-device-path /dev/source -target-device-path /dev/target || { export failed=1; true;}
           if [ $failed -ne 1 ]; then
             echo "Command was expected to fail but it succeeded"
             exit 1

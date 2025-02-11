@@ -64,3 +64,14 @@ func TestValidateArgs(t *testing.T) {
 	err = args.Validate()
 	assert.NoError(t, err)
 }
+
+// Generate tests for VerifierEmitter methods
+func TestVerifierEmitter(t *testing.T) {
+	// var err error
+
+	// // tmp sourceDevice
+	// sourceDevice := t.TempDir() + "/source"
+
+	// emitter := VerifierEmitter{}
+
+}

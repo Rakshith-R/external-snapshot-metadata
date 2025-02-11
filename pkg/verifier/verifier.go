@@ -77,7 +77,7 @@ type VerifierIterator struct {
 
 func newVerifierIterator(args Args) *VerifierIterator {
 	verifierIter := &VerifierIterator{
-		Iterator: *iter.NewIterator(args.Args),
+		Iterator: iter.New(args.Args),
 		Args:     args,
 	}
 

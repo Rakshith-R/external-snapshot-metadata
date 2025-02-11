@@ -62,9 +62,11 @@ Flags:
 
 // globals set by flags
 var (
-	args         iterator.Args
-	kubeConfig   string
-	outputFormat string
+	args                               iterator.Args
+	kubeConfig                         string
+	outputFormat                       string
+	sourceDevicePath, targetDevicePath string
+	verify                             bool
 )
 
 func parseFlags() {
@@ -76,6 +78,8 @@ func parseFlags() {
 	stringFlag(&args.Namespace, "namespace", "n", "", "The Namespace containing the VolumeSnapshot objects.")
 	stringFlag(&args.SnapshotName, "snapshot", "s", "", "The name of the VolumeSnapshot for which metadata is to be displayed.")
 	stringFlag(&args.PrevSnapshotName, "previous-snapshot", "p", "", "The name of an earlier VolumeSnapshot against which changed block metadata is to be displayed.")
+	stringFlag(&sourceDevicePath, "source-device-path", "src", "", "The source device to use for verification.")
+	stringFlag(&targetDevicePath, "target-device-path", "tgt", "", "The target device to use for verification.")
 	stringFlag(&outputFormat, "output-format", "o", "table", "The format of the output. Possible values: \"table\" or \"json\".")
 
 	if home := homedir.HomeDir(); home != "" {
@@ -95,6 +99,7 @@ func parseFlags() {
 
 	var showHelp bool
 	flag.BoolVar(&showHelp, "h", false, "Show the full usage message.")
+	flag.BoolVar(&verify, "verify", false, "Verify the changed blocks between two snapshots.")
 
 	progName := filepath.Base(os.Args[0])
 	flag.Usage = func() {
@@ -114,6 +119,14 @@ func parseFlags() {
 		fmt.Fprintf(os.Stderr, usageFmt, progName)
 		flag.PrintDefaults()
 		os.Exit(0)
+	}
+
+	if verify {
+		if sourceDevicePath == "" || targetDevicePath == "" {
+			fmt.Fprintf(os.Stderr, "Missing required arguments\n")
+			flag.Usage()
+			os.Exit(1)
+		}
 	}
 
 	switch outputFormat {
@@ -149,6 +162,34 @@ func main() {
 
 	ctx, stopFn := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stopFn()
+
+	if err := iterator.GetSnapshotMetadata(ctx, args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if !verify {
+		os.Exit(0)
+	}
+
+	sourceDevice, err := os.Open(sourceDevicePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open source device %s: %q", sourceDevicePath, err)
+		os.Exit(1)
+	}
+	defer sourceDevice.Close()
+
+	targetDevice, err := os.OpenFile(targetDevicePath, os.O_RDWR, 0644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to open target device %s: %q", targetDevicePath, err)
+		os.Exit(1)
+	}
+	defer targetDevice.Close()
+
+	args.Emitter = &iterator.VerifierEmitter{
+		SourceDevice: sourceDevice,
+		TargetDevice: targetDevice,
+	}
 
 	if err := iterator.GetSnapshotMetadata(ctx, args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

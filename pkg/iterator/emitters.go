@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 )
 
@@ -83,4 +84,77 @@ func (e *TableEmitter) SnapshotMetadataIteratorRecord(recordNumber int, metadata
 
 func (e *TableEmitter) SnapshotMetadataIteratorDone(_ int) error {
 	return nil
+}
+
+// VerifierEmitter formats the metadata as a table.
+type VerifierEmitter struct {
+	// SourceDevice contains the source device file descriptor.
+	SourceDevice *os.File
+
+	// TargetDevice contains the target device file descriptor.
+	TargetDevice *os.File
+}
+
+func (verifierEmitter *VerifierEmitter) SnapshotMetadataIteratorRecord(_ int, metadata IteratorMetadata) error {
+	for _, bmd := range metadata.BlockMetadata {
+		buffer := make([]byte, bmd.SizeBytes)
+		// Seek to the block's offset in the source device.
+		_, err := verifierEmitter.SourceDevice.Seek(bmd.ByteOffset, io.SeekStart)
+		if err != nil {
+			return fmt.Errorf("failed to seek source device(offset: %d, size bytes: %d): %w", bmd.ByteOffset, bmd.SizeBytes, err)
+		}
+
+		// Read the block from the source device.
+		_, err = verifierEmitter.SourceDevice.Read(buffer)
+		if err != nil {
+			return fmt.Errorf("failed to read source device(offset: %d, size bytes: %d): %w", bmd.ByteOffset, bmd.SizeBytes, err)
+		}
+
+		// Write the block to the target device at designated offset.
+		_, err = verifierEmitter.TargetDevice.WriteAt(buffer, bmd.ByteOffset)
+		if err != nil {
+			return fmt.Errorf("failed to write target device(offset: %d, size bytes: %d): %w", bmd.ByteOffset, bmd.SizeBytes, err)
+		}
+	}
+
+	return nil
+}
+
+// SnapshotMetadataIteratorDone will compare the contents of the source and target devices.
+func (verifierEmitter *VerifierEmitter) SnapshotMetadataIteratorDone(_ int) error {
+	// Seek to the start of the source and target devices.
+	_, err := verifierEmitter.SourceDevice.Seek(0, io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("failed to seek source device(%q) to start: %w", verifierEmitter.SourceDevice.Name(), err)
+	}
+	_, err = verifierEmitter.TargetDevice.Seek(0, io.SeekStart)
+	if err != nil {
+		return fmt.Errorf("failed to seek target device(%q) to start: %w", verifierEmitter.TargetDevice.Name(), err)
+	}
+
+	const chunkSize = 256
+	sourceBuffer := make([]byte, chunkSize)
+	targetBuffer := make([]byte, chunkSize)
+	for {
+		// Read a chunk from the source and target devices.
+		_, sourceErr := verifierEmitter.SourceDevice.Read(sourceBuffer)
+		_, targetErr := verifierEmitter.TargetDevice.Read(targetBuffer)
+
+		if sourceErr != nil || targetErr != nil {
+			if sourceErr == io.EOF && targetErr == io.EOF {
+				// Both devices have been read completely.
+				return nil
+			} else if sourceErr == io.EOF || targetErr == io.EOF {
+				// One device has been read completely but the other has not.
+				return fmt.Errorf("source and target device contents do not match")
+			} else {
+				// An error occurred while reading from both devices.
+				return fmt.Errorf("error reading source and target device contents: source(%q) target(%q)", sourceErr, targetErr)
+			}
+		}
+
+		if !bytes.Equal(sourceBuffer, targetBuffer) {
+			return fmt.Errorf("source and target device contents do not match")
+		}
+	}
 }

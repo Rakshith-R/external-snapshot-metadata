@@ -117,14 +117,14 @@ func TestValidateArgs(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestNewIterator(t *testing.T) {
+func TestNew(t *testing.T) {
 	args := Args{
 		// no Client or else the Equal check will recurse infinitely
 		Namespace:    "namespace",
 		SnapshotName: "snapshot",
 	}
 
-	l := NewIterator(args)
+	l := New(args)
 	assert.NotNil(t, l)
 
 	assert.Equal(t, l, l.h)
@@ -580,7 +580,7 @@ func TestGetAllocatedBlocks(t *testing.T) {
 	}
 
 	// helper to check the emitted data
-	checkIterRecs := func(t *testing.T, th *testHarness, iter *Iterator, responses []*api.GetMetadataAllocatedResponse) {
+	checkIterRecs := func(t *testing.T, th *testHarness, iter *iterator, responses []*api.GetMetadataAllocatedResponse) {
 		assert.Equal(t, len(responses), iter.recordNum)
 		assert.Equal(t, len(responses), th.InSnapshotMetadataIteratorRecordNum)
 		// cannot directly compare BlockMetadata because of
@@ -722,7 +722,7 @@ func TestGetChangedBlocks(t *testing.T) {
 	}
 
 	// helper to check the emitted data
-	checkIterRecs := func(t *testing.T, th *testHarness, iter *Iterator, responses []*api.GetMetadataDeltaResponse) {
+	checkIterRecs := func(t *testing.T, th *testHarness, iter *iterator, responses []*api.GetMetadataDeltaResponse) {
 		assert.Equal(t, len(responses), iter.recordNum)
 		assert.Equal(t, len(responses), th.InSnapshotMetadataIteratorRecordNum)
 		// cannot directly compare BlockMetadata because of
