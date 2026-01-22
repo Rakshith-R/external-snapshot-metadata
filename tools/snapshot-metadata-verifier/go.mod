@@ -1,4 +1,4 @@
-module github.com/kubernetes-csi/external-snapshot-metadata/tools/snapshot-metadata-verifier
+module github.com/Rakshith-R/external-snapshot-metadata/tools/snapshot-metadata-verifier
 
 go 1.25.0
 
